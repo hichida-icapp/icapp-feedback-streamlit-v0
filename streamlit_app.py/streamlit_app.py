@@ -7,7 +7,7 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 st.set_page_config(page_title="Dropbox PDF Viewer", layout="wide")
-st.title("Dropbox PDFビューア（リフレッシュトークン）")
+st.title("PDFビューアー （iCaPP Feed back Sheet）")
 
 
 def get_dbx():
@@ -56,7 +56,7 @@ def show_pdf_first_page_as_image(pdf_bytes: bytes, zoom: float = 2.0):
 folder_path = st.text_input(
     "Dropboxフォルダパス（直下のPDFを一覧表示）",
     value="",
-    placeholder="例: /PDF",
+    placeholder=" /PDF 　を入力してください．",
 )
 
 if folder_path:
