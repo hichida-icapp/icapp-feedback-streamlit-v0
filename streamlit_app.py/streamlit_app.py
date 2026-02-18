@@ -1,87 +1,86 @@
-import re
+import io
 import base64
 import streamlit as st
-import gdown
+import dropbox
 
-st.set_page_config(page_title="Drive PDF Viewer", layout="wide")
-st.title("Google Drive（公開フォルダ）PDFビューア")
+st.set_page_config(page_title="Dropbox PDF Viewer", layout="wide")
+st.title("Dropbox PDFビューア（リフレッシュトークン）")
 
 
-def extract_folder_id(folder_url: str):
-    # 例: https://drive.google.com/drive/folders/<FOLDER_ID>?usp=sharing
-    m = re.search(r"/folders/([a-zA-Z0-9_-]+)", folder_url)
-    return m.group(1) if m else None
+def get_dbx():
+    app_key = st.secrets["DROPBOX_APP_KEY"]
+    app_secret = st.secrets["DROPBOX_APP_SECRET"]
+    refresh_token = st.secrets["DROPBOX_REFRESH_TOKEN"]
+
+    return dropbox.Dropbox(
+        oauth2_refresh_token=refresh_token,
+        app_key=app_key,
+        app_secret=app_secret,
+    )
+
+
+def list_pdfs_in_folder(dbx: dropbox.Dropbox, folder_path: str):
+    # 直下だけ（再帰しない）
+    res = dbx.files_list_folder(folder_path, recursive=False)
+
+    entries = []
+    for e in res.entries:
+        if isinstance(e, dropbox.files.FileMetadata) and e.name.lower().endswith(".pdf"):
+            entries.append(e)
+
+    # nameでソート
+    entries.sort(key=lambda x: x.name)
+    return entries
+
+
+def download_file_bytes(dbx: dropbox.Dropbox, path_lower: str):
+    md, resp = dbx.files_download(path_lower)
+    return resp.content
 
 
 def show_pdf_bytes(pdf_bytes: bytes):
     b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-    html = f"""
-    <iframe
-        src=\"data:application/pdf;base64,{b64}\"
-        width=\"100%\"
-        height=\"900\"
-        style=\"border: none;\">
-    </iframe>
-    """
-    st.components.v1.html(html, height=900, scrolling=True)
+    st.components.v1.html(
+        f"""
+        <iframe
+            src=\"data:application/pdf;base64,{b64}\"
+            width=\"100%\"
+            height=\"900\"
+            style=\"border: none;\"></iframe>
+        """,
+        height=900,
+        scrolling=True,
+    )
 
 
-# --- 設定の外出し（別ファイル②：.streamlit/secrets.toml）---
-# Streamlit Community Cloud では Secrets が標準で使えます。
-# ローカルでも同じ構成で動きます。
-#
-# .streamlit/secrets.toml（例）
-# DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/<FOLDER_ID>?usp=sharing"
-DEFAULT_FOLDER_URL = st.secrets.get("DRIVE_FOLDER_URL", "")
-
-folder_url = st.text_input(
-    "Google DriveフォルダURL（公開）",
-    value=DEFAULT_FOLDER_URL,
-    placeholder="https://drive.google.com/drive/folders/...",
+folder_path = st.text_input(
+    "Dropboxフォルダパス（直下のPDFを一覧表示）",
+    value="",
+    placeholder="例: /Apps/StreamlitCloud_99/PDF",
 )
 
-if folder_url:
-    folder_id = extract_folder_id(folder_url)
-    if not folder_id:
-        st.error("フォルダURLからフォルダIDを抽出できませんでした。/folders/〜 の形式か確認してください。")
+if folder_path:
+    dbx = get_dbx()
+
+    with st.spinner("PDF一覧を取得中..."):
+        pdfs = list_pdfs_in_folder(dbx, folder_path)
+
+    if not pdfs:
+        st.warning("PDFが見つかりませんでした（フォルダパスと権限を確認）。")
         st.stop()
 
-    with st.spinner("フォルダ内のPDF一覧を取得中..."):
-        # 公開フォルダ前提：use_cookies=False
-        local_paths = gdown.download_folder(
-            id=folder_id,
-            quiet=True,
-            use_cookies=False,
-            remaining_ok=True,  # 途中で失敗しても残りを続行（環境差対策）
-        )
+    name_to_entry = {e.name: e for e in pdfs}
+    selected_name = st.selectbox("表示するPDF", list(name_to_entry.keys()))
+    entry = name_to_entry[selected_name]
 
-    if not local_paths:
-        st.warning("ファイルを取得できませんでした。フォルダが公開されているか確認してください。")
-        st.stop()
+    with st.spinner("PDFを取得中..."):
+        pdf_bytes = download_file_bytes(dbx, entry.path_lower)
 
-    pdf_paths = [p for p in local_paths if isinstance(p, str) and p.lower().endswith(".pdf")]
-
-    if not pdf_paths:
-        st.warning("PDFが見つかりませんでした。")
-        st.stop()
-
-    # 表示名（ファイル名）だけにする
-    name_to_path = {p.split("/")[-1]: p for p in pdf_paths}
-    selected_name = st.selectbox("表示するPDF", sorted(name_to_path.keys()))
-    selected_path = name_to_path[selected_name]
-
-    with open(selected_path, "rb") as f:
-        pdf_bytes = f.read()
-
-    cols = st.columns([1, 1, 6])
-    with cols[0]:
-        st.download_button(
-            "ダウンロード",
-            data=pdf_bytes,
-            file_name=selected_name,
-            mime="application/pdf",
-        )
-    with cols[1]:
-        st.caption(f"{len(pdf_bytes)/1024/1024:.2f} MB")
+    st.download_button(
+        "ダウンロード",
+        data=pdf_bytes,
+        file_name=selected_name,
+        mime="application/pdf",
+    )
 
     show_pdf_bytes(pdf_bytes)
