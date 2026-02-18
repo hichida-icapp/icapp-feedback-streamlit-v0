@@ -1,3 +1,4 @@
-streamlit
 dropbox
-
+streamlit
+pymupdf
+pillow
