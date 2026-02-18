@@ -12,12 +12,16 @@ def get_dbx():
     app_secret = st.secrets["DROPBOX_APP_SECRET"]
     refresh_token = st.secrets["DROPBOX_REFRESH_TOKEN"]
 
-    return dropbox.Dropbox(
+    dbx = dropbox.Dropbox(
         oauth2_refresh_token=refresh_token,
         app_key=app_key,
         app_secret=app_secret,
     )
 
+    # 疎通確認（ここで落ちるならSecretsの値が不正）
+    dbx.users_get_current_account()
+
+    return dbx
 
 
 def list_pdfs_in_folder(dbx: dropbox.Dropbox, folder_path: str):
@@ -62,15 +66,7 @@ folder_path = st.text_input(
 
 if folder_path:
     dbx = get_dbx()
-    
-    dbx = dropbox.Dropbox(
-    oauth2_refresh_token=refresh_token,
-    app_key=app_key,
-    app_secret=app_secret,
-)
 
-    # 疎通確認（トークンが正しければ通る）
-    dbx.users_get_current_account()
 
     with st.spinner("PDF一覧を取得中..."):
         pdfs = list_pdfs_in_folder(dbx, folder_path)
