@@ -19,6 +19,7 @@ def get_dbx():
     )
 
 
+
 def list_pdfs_in_folder(dbx: dropbox.Dropbox, folder_path: str):
     # 直下だけ（再帰しない）
     res = dbx.files_list_folder(folder_path, recursive=False)
@@ -61,6 +62,15 @@ folder_path = st.text_input(
 
 if folder_path:
     dbx = get_dbx()
+    
+    dbx = dropbox.Dropbox(
+    oauth2_refresh_token=refresh_token,
+    app_key=app_key,
+    app_secret=app_secret,
+)
+
+    # 疎通確認（トークンが正しければ通る）
+    dbx.users_get_current_account()
 
     with st.spinner("PDF一覧を取得中..."):
         pdfs = list_pdfs_in_folder(dbx, folder_path)
