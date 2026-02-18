@@ -1,7 +1,10 @@
 import io
-import base64
 import streamlit as st
 import dropbox
+
+# 1ページPDFを画像として表示（ChromeのPDF埋め込みブロック回避）
+import fitz  # PyMuPDF
+from PIL import Image
 
 st.set_page_config(page_title="Dropbox PDF Viewer", layout="wide")
 st.title("Dropbox PDFビューア（リフレッシュトークン）")
@@ -12,16 +15,11 @@ def get_dbx():
     app_secret = st.secrets["DROPBOX_APP_SECRET"]
     refresh_token = st.secrets["DROPBOX_REFRESH_TOKEN"]
 
-    dbx = dropbox.Dropbox(
+    return dropbox.Dropbox(
         oauth2_refresh_token=refresh_token,
         app_key=app_key,
         app_secret=app_secret,
     )
-
-    # 疎通確認（ここで落ちるならSecretsの値が不正）
-    dbx.users_get_current_account()
-
-    return dbx
 
 
 def list_pdfs_in_folder(dbx: dropbox.Dropbox, folder_path: str):
@@ -43,30 +41,26 @@ def download_file_bytes(dbx: dropbox.Dropbox, path_lower: str):
     return resp.content
 
 
-def show_pdf_bytes(pdf_bytes: bytes):
-    b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-    st.components.v1.html(
-        f"""
-        <iframe
-            src=\"data:application/pdf;base64,{b64}\"
-            width=\"100%\"
-            height=\"900\"
-            style=\"border: none;\"></iframe>
-        """,
-        height=900,
-        scrolling=True,
-    )
+def show_pdf_first_page_as_image(pdf_bytes: bytes, zoom: float = 2.0):
+    """PDFの1ページ目だけを画像化して表示（1ページ前提）"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+    img = Image.open(io.BytesIO(pix.tobytes("png")))
+
+    st.image(img, use_container_width=True)
 
 
 folder_path = st.text_input(
     "Dropboxフォルダパス（直下のPDFを一覧表示）",
     value="",
-    placeholder="例: /Apps/StreamlitCloud_99/PDF",
+    placeholder="例: /PDF",
 )
 
 if folder_path:
     dbx = get_dbx()
-
 
     with st.spinner("PDF一覧を取得中..."):
         pdfs = list_pdfs_in_folder(dbx, folder_path)
@@ -89,4 +83,4 @@ if folder_path:
         mime="application/pdf",
     )
 
-    show_pdf_bytes(pdf_bytes)
+    show_pdf_first_page_as_image(pdf_bytes)
